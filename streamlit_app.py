@@ -128,6 +128,7 @@ elif page == "Data Visualization":
         ax1.set_title("Top 10 Brands by Average Price")
         ax1.set_ylabel("Average Price ($)")
         ax1.tick_params(axis='x', rotation=45)
+        ax1.set_ylim(50000, 58000)
         
         # Pie chart
         top_brands = df['Brand'].value_counts().head(8)
