@@ -180,61 +180,169 @@ elif page == "Data Visualization":
 
 # ========== PRICE PREDICTION PAGE ==========
 elif page == "Price Prediction":
-    st.header("Prediction Modeling")
+    st.title("Car Price Prediction by Brand")
     
-    # Use ONLY numeric features (like your wine app)
-    X = df[['Year', 'Engine Size', 'Mileage']]
-    y = df['Price']
+    st.markdown("""
+    ### Brand-Specific Modeling
+    Training separate models for each brand for more accurate predictions.
+    """)
     
-    st.write("**Using only Year, Engine Size, and Mileage**")
-    st.write(f"Data shape: {X.shape}")
+    # Step 1: Filter brands with sufficient data (at least 30 cars)
+    brand_counts = df['Brand'].value_counts()
+    valid_brands = brand_counts[brand_counts >= 30].index.tolist()
     
-    test_size = st.slider("Test size (%)", 10, 40, 20, step=5)
-
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=test_size / 100.0, random_state=42
+    selected_brand = st.selectbox(
+        "Select a car brand:",
+        valid_brands
     )
-
-    model = LinearRegression()
-    model.fit(X_train, y_train)
-    y_pred = model.predict(X_test)
-
-    mse = mean_squared_error(y_test, y_pred)
-    mae = mean_absolute_error(y_test, y_pred)
-    r2 = r2_score(y_test, y_pred)
-
-    st.subheader("Model Performance")
     
+    # Step 2: Filter data for selected brand
+    df_brand = df[df['Brand'] == selected_brand].copy()
+    
+    # Show brand statistics
     col1, col2, col3 = st.columns(3)
     with col1:
-        st.metric("MSE", f"${mse:,.0f}")
+        st.metric(f"{selected_brand} Cars", len(df_brand))
     with col2:
-        st.metric("MAE", f"${mae:,.0f}")
+        st.metric("Avg Price", f"${df_brand['Price'].mean():,.0f}")
     with col3:
-        st.metric("R²", f"{r2:.3f}")
-
-    # Simple plot
-    fig, ax = plt.subplots(figsize=(10, 6))
-
-    ax.scatter(y_test, y_pred, alpha=0.6)
-
-    # Diagonal perfect-prediction line
-    ax.plot(
-        [y_test.min(), y_test.max()],
-        [y_test.min(), y_test.max()],
-        'r--'
-    )
-
-    ax.set_ylim(48000.00, 56000.00)
-
-    ax.set_xlabel("Actual Price ($)")
-    ax.set_ylabel("Predicted Price ($)")
-
-    st.pyplot(fig)
-
+        st.metric("Price Range", f"${df_brand['Price'].min():,.0f}-${df_brand['Price'].max():,.0f}")
     
-
+    # Step 3: Prepare features
+    X = df_brand[['Year', 'Engine Size', 'Mileage']]
+    y = df_brand['Price']
     
+    if len(df_brand) < 30:
+        st.error(f"Not enough data for {selected_brand}. Only {len(df_brand)} cars found.")
+    else:
+        # Step 4: Train/test split
+        test_size = st.slider(
+            "Test size (%)", 
+            min_value=10, 
+            max_value=40, 
+            value=20, 
+            step=5
+        )
+        
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=test_size/100, random_state=42
+        )
+        
+        # Step 5: Train model
+        model = LinearRegression()
+        model.fit(X_train, y_train)
+        y_pred = model.predict(X_test)
+        
+        # Calculate metrics
+        mse = mean_squared_error(y_test, y_pred)
+        mae = mean_absolute_error(y_test, y_pred)
+        r2 = r2_score(y_test, y_pred)
+        
+        # Step 6: Display results
+        st.subheader(f"{selected_brand} Model Performance")
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("MSE", f"${mse:,.0f}")
+        with col2:
+            st.metric("MAE", f"${mae:,.0f}")
+        with col3:
+            st.metric("R²", f"{r2:.3f}")
+        
+        # Step 7: Show model coefficients
+        st.subheader("Feature Impacts on Price")
+        coef_df = pd.DataFrame({
+            'Feature': X.columns,
+            'Impact per unit': [f"${c:,.2f}" for c in model.coef_],
+            'Direction': ['Increases price' if c > 0 else 'Decreases price' for c in model.coef_]
+        })
+        st.dataframe(coef_df)
+        
+        # Step 8: Visualizations - SIMPLIFIED to 2 graphs
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
+        
+        # Graph 1: Actual vs Predicted with PROPERLY SCALED line
+        ax1.scatter(y_test, y_pred, alpha=0.6, s=50, color='steelblue')
+        
+        # Get min and max for scaling
+        all_values = np.concatenate([y_test, y_pred])
+        min_val = all_values.min() * 0.95
+        max_val = all_values.max() * 1.05
+        
+        # Perfect prediction line (45-degree line from corner to corner)
+        ax1.plot([min_val, max_val], [min_val, max_val], 
+                'r--', lw=2.5, label='Perfect Prediction')
+        
+        ax1.set_xlabel("Actual Price ($)", fontsize=12)
+        ax1.set_ylabel("Predicted Price ($)", fontsize=12)
+        ax1.set_title(f"{selected_brand}: Actual vs Predicted", fontsize=14, fontweight='bold')
+        ax1.legend()
+        ax1.grid(True, alpha=0.3)
+        
+        # Set equal scale on both axes
+        ax1.set_xlim([min_val, max_val])
+        ax1.set_ylim([min_val, max_val])
+        
+        # Graph 2: Feature vs Price (most important feature)
+        most_important_idx = np.argmax(np.abs(model.coef_))
+        most_important_feature = X.columns[most_important_idx]
+        
+        ax2.scatter(df_brand[most_important_feature], df_brand['Price'], 
+                   alpha=0.6, s=50, color='coral')
+        ax2.set_xlabel(most_important_feature, fontsize=12)
+        ax2.set_ylabel("Price ($)", fontsize=12)
+        ax2.set_title(f"Price vs {most_important_feature}", fontsize=14, fontweight='bold')
+        ax2.grid(True, alpha=0.3)
+        
+        plt.tight_layout()
+        st.pyplot(fig)
+        
+        # Step 9: Simple prediction tool
+        st.subheader("Try It Yourself: Predict a Price")
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            input_year = st.number_input(
+                "Year", 
+                min_value=int(df_brand['Year'].min()), 
+                max_value=int(df_brand['Year'].max()),
+                value=int(df_brand['Year'].median())
+            )
+        with col2:
+            input_engine = st.number_input(
+                "Engine Size (L)", 
+                min_value=float(df_brand['Engine Size'].min()),
+                max_value=float(df_brand['Engine Size'].max()),
+                value=float(df_brand['Engine Size'].median()),
+                step=0.1
+            )
+        with col3:
+            input_mileage = st.number_input(
+                "Mileage", 
+                min_value=int(df_brand['Mileage'].min()),
+                max_value=int(df_brand['Mileage'].max()),
+                value=int(df_brand['Mileage'].median())
+            )
+        
+        if st.button("Predict Price", type="primary"):
+            input_data = pd.DataFrame({
+                'Year': [input_year],
+                'Engine Size': [input_engine],
+                'Mileage': [input_mileage]
+            })
+            
+            predicted_price = model.predict(input_data)[0]
+            
+            st.success(f"### Predicted Price: **${predicted_price:,.2f}**")
+            
+            # Show comparison
+            st.info(f"""
+            **Comparison:**
+            - Your predicted price: ${predicted_price:,.0f}
+            - Average {selected_brand} price: ${df_brand['Price'].mean():,.0f}
+            - This is {"above" if predicted_price > df_brand['Price'].mean() else "below"} average
+            """)
+
 
 # ========== FEATURE IMPORTANCE PAGE ==========
 elif page == "Feature Importance":
